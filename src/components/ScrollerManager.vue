@@ -23,10 +23,10 @@
       ref="hoverCursor"
       class="cursor hv"
       :style="{ transform: hoverCursorTransform }"
-      @touchmove.prevent="touchmove"
-      @touchstart.passive="interactstart"
-      @touchend.passive="interactend"
-      @touchcancel.passive="interactend"
+      @touchmove.stop.prevent="touchmove"
+      @touchstart.stop.prevent="interactstart"
+      @touchend.stop.passive="interactend"
+      @touchcancel.stop.passive="interactend"
     >
       <div class="text">{{ hoverCursorText }}</div>
       <div class="icon">
@@ -221,7 +221,8 @@ export default defineComponent({
       if (this.interacting) return;
 
       // Get the scroll position
-      const scroll = this.recycler?.$el?.scrollTop || 0;
+      const el = this.recycler?.$el;
+      const scroll = el?.scrollTop || 0;
 
       // Emit scroll event
       const event = {
@@ -233,9 +234,18 @@ export default defineComponent({
       this.$emit('scroll', event);
       this.lastKnownRecyclerScroll = scroll;
 
+      // Remap scroll position from [0, maxScroll] to [0, totalContent] before
+      // looking up in getCoords. scrollTop ranges from 0 to scrollHeight-clientHeight,
+      // which is less than the total content height. Without this remapping, the
+      // cursor can never reach the bottom of the scroller when fully scrolled,
+      // because the tick y values span the full content range.
+      const maxScroll = el ? el.scrollHeight - el.clientHeight : 0;
+      const totalContent = this.dynTopMatterHeight + this.recyclerHeight;
+      const remappedScroll = maxScroll > 0 ? (scroll * totalContent) / maxScroll : scroll;
+
       // Get cursor px position
-      const { top1, top2, y1, y2 } = this.getCoords(scroll, 'y');
-      const topfrac = (scroll - y1) / (y2 - y1);
+      const { top1, top2, y1, y2 } = this.getCoords(remappedScroll, 'y');
+      const topfrac = (remappedScroll - y1) / (y2 - y1);
       const rtop = top1 + (top2 - top1) * (topfrac || 0);
 
       // Always move static cursor to right position
@@ -556,7 +566,14 @@ export default defineComponent({
       const { top1, top2, y1, y2 } = this.getCoords(y, 'topF');
       const yfrac = (y - top1) / (top2 - top1);
       const ry = y1 + (y2 - y1) * (yfrac || 0);
-      const targetY = snap ? y1 + SNAP_OFFSET : ry;
+      const contentY = snap ? y1 + SNAP_OFFSET : ry;
+
+      // Remap from content space to scroll space (inverse of updateFromRecyclerScroll)
+      // so that dragging the cursor and releasing doesn't cause a position jump.
+      const el = this.recycler?.$el;
+      const maxScroll = el ? el.scrollHeight - el.clientHeight : 0;
+      const totalContent = this.dynTopMatterHeight + this.recyclerHeight;
+      const targetY = totalContent > 0 ? (contentY * maxScroll) / totalContent : contentY;
 
       if (this.lastRequestedRecyclerY !== targetY) {
         this.lastRequestedRecyclerY = targetY;
@@ -574,7 +591,9 @@ export default defineComponent({
 
     /** Handle touch */
     touchmove(event: TouchEvent) {
-      if (!this.scrollerRect) return;
+      // On mobile, only process if interaction was started by the cursor
+      this.scrollerRect = this.refs.scroller!.getBoundingClientRect();
+
       let y = event.targetTouches[0].pageY - this.scrollerRect.top;
       y = Math.max(this.topPadding, y + MOBILE_CURSOR_HH); // middle of touch finger
 
@@ -583,7 +602,13 @@ export default defineComponent({
       this.moveto(y, snap);
     },
 
-    interactstart() {
+    interactstart(event?: Event) {
+      // On mobile, the cursor handlers use .stop so only parent receives
+      // non-cursor touches. Ignore those to prevent jumping.
+      if (utils.isMobile() && event instanceof TouchEvent) {
+        const cursor = this.refs.hoverCursor;
+        if (cursor && !cursor.contains(event.target as Node)) return;
+      }
       this.interacting = true;
     },
 
@@ -724,10 +749,22 @@ export default defineComponent({
 
   // Hide ticks on mobile unless hovering
   @include phone {
-    // Shift pointer events to hover cursor
-    pointer-events: none;
+    // Wider touch target without pointer-events: none on parent
+    contain: style;
+    overflow: visible;
+    outline: 2px solid red; // DEBUG: parent scroller touch area
     .cursor.hv {
-      pointer-events: all;
+      touch-action: none;
+      // Enlarged touch target via pseudo-element
+      &::after {
+        content: '';
+        position: absolute;
+        top: -10px;
+        left: -10px;
+        right: -10px;
+        bottom: -10px;
+        outline: 2px solid blue; // DEBUG
+      }
     }
 
     > .ticks-container > .tick {
