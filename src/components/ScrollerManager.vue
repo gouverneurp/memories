@@ -7,26 +7,30 @@
       'scrolling-recycler': scrollingRecyclerTimer,
       'scrolling-now': scrollingNowTimer,
       scrolling: scrollingTimer,
+      interacting: interacting,
     }"
     @mousemove.passive="mousemove"
     @mouseleave.passive="mouseleave"
     @mousedown.passive="mousedown"
     @mouseup.passive="interactend"
-    @touchmove.prevent="touchmove"
-    @touchstart.passive="interactstart"
-    @touchend.passive="interactend"
-    @touchcancel.passive="interactend"
   >
+    <!-- Transparent touch zone for mobile. Always visibility:visible so it
+         receives touches even when the scroller is hidden. Wider than the
+         scroller strip for easier targeting. Events bubble to parent. -->
+    <div
+      class="touch-zone"
+      @touchstart.prevent="touchstart"
+      @touchmove.prevent="touchmove"
+      @touchend.passive="interactend"
+      @touchcancel.passive="interactend"
+    ></div>
+
     <span class="cursor st" ref="cursorSt" :style="{ transform: `translateY(${cursorY}px)` }"> </span>
 
     <span
       ref="hoverCursor"
       class="cursor hv"
       :style="{ transform: hoverCursorTransform }"
-      @touchmove.stop.prevent="touchmove"
-      @touchstart.stop.prevent="interactstart"
-      @touchend.stop.passive="interactend"
-      @touchcancel.stop.passive="interactend"
     >
       <div class="text">{{ hoverCursorText }}</div>
       <div class="icon">
@@ -589,26 +593,31 @@ export default defineComponent({
       this.moveto(event.offsetY, false);
     },
 
-    /** Handle touch */
-    touchmove(event: TouchEvent) {
-      // On mobile, only process if interaction was started by the cursor
+    /** Handle touch start on the scroller strip */
+    touchstart(event: TouchEvent) {
+      this.interacting = true;
       this.scrollerRect = this.refs.scroller!.getBoundingClientRect();
 
       let y = event.targetTouches[0].pageY - this.scrollerRect.top;
-      y = Math.max(this.topPadding, y + MOBILE_CURSOR_HH); // middle of touch finger
+      y = Math.max(this.topPadding, y + MOBILE_CURSOR_HH);
 
-      // Snap to nearest tick if there are a lot of rows
       const snap = this.rows.length > SNAP_MIN_ROWS;
       this.moveto(y, snap);
     },
 
-    interactstart(event?: Event) {
-      // On mobile, the cursor handlers use .stop so only parent receives
-      // non-cursor touches. Ignore those to prevent jumping.
-      if (utils.isMobile() && event instanceof TouchEvent) {
-        const cursor = this.refs.hoverCursor;
-        if (cursor && !cursor.contains(event.target as Node)) return;
-      }
+    /** Handle touch move on the scroller strip */
+    touchmove(event: TouchEvent) {
+      if (!this.interacting) return;
+      this.scrollerRect = this.refs.scroller!.getBoundingClientRect();
+
+      let y = event.targetTouches[0].pageY - this.scrollerRect.top;
+      y = Math.max(this.topPadding, y + MOBILE_CURSOR_HH);
+
+      const snap = this.rows.length > SNAP_MIN_ROWS;
+      this.moveto(y, snap);
+    },
+
+    interactstart() {
       this.interacting = true;
     },
 
@@ -652,7 +661,8 @@ export default defineComponent({
 
   // Show on hover or scroll of main window
   &:hover,
-  &.scrolling-recycler {
+  &.scrolling-recycler,
+  &.interacting {
     opacity: 1;
     visibility: visible;
   }
@@ -660,6 +670,11 @@ export default defineComponent({
   // On phone, there is no point of hover, so just hide it when not scrolling
   @include phone {
     visibility: hidden;
+  }
+
+  // Transparent touch target for mobile; hidden on desktop
+  > .touch-zone {
+    display: none;
   }
 
   > .ticks-container {
@@ -749,22 +764,23 @@ export default defineComponent({
 
   // Hide ticks on mobile unless hovering
   @include phone {
-    // Wider touch target without pointer-events: none on parent
+    // Drop layout containment so the cursor can overflow the 36px strip.
     contain: style;
     overflow: visible;
-    outline: 2px solid red; // DEBUG: parent scroller touch area
-    .cursor.hv {
+
+    // Transparent touch zone: always visible so it receives touches even
+    // when the rest of the scroller is hidden. Wider than the scroller
+    // for a reliable touch target on mobile.
+    > .touch-zone {
+      display: block;
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      right: 0;
+      width: 60px; // wider than the 36px scroller for easier targeting
+      visibility: visible;
       touch-action: none;
-      // Enlarged touch target via pseudo-element
-      &::after {
-        content: '';
-        position: absolute;
-        top: -10px;
-        left: -10px;
-        right: -10px;
-        bottom: -10px;
-        outline: 2px solid blue; // DEBUG
-      }
+      background: transparent;
     }
 
     > .ticks-container > .tick {
