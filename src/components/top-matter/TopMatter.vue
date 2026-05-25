@@ -4,14 +4,9 @@
     :class="{
       'dynamic-visible': dynamicVisible,
     }"
+    v-if="currentmatter"
   >
-    <component v-if="currentmatter" :is="currentmatter" />
-
-    <div v-if="!currentmatter" class="top-matter-date-only">
-      <div class="right-actions">
-        <GoToDateMenuItem />
-      </div>
-    </div>
+    <component :is="currentmatter" />
   </div>
 </template>
 
@@ -24,8 +19,6 @@ import FaceTopMatter from './FaceTopMatter.vue';
 import AlbumTopMatter from './AlbumTopMatter.vue';
 import PlacesTopMatter from './PlacesTopMatter.vue';
 
-import GoToDateMenuItem from '@components/header/GoToDateMenuItem.vue';
-
 import * as utils from '@services/utils';
 
 export default defineComponent({
@@ -35,7 +28,6 @@ export default defineComponent({
     ClusterTopMatter,
     FaceTopMatter,
     AlbumTopMatter,
-    GoToDateMenuItem,
   },
 
   data: () => ({
@@ -140,10 +132,6 @@ export default defineComponent({
     span {
       cursor: pointer;
     }
-  }
-
-  .top-matter-date-only {
-    justify-content: flex-end;
   }
 
   :deep button {
