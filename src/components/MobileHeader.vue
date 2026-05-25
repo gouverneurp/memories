@@ -11,7 +11,6 @@
     </div>
 
     <div class="actions">
-      <GoToDateMenuItem />
       <UploadMenuItem />
       <SearchbarMenuItem />
     </div>
@@ -22,7 +21,6 @@
 import { defineComponent } from 'vue';
 import { generateUrl } from '@nextcloud/router';
 
-import GoToDateMenuItem from '@components/header/GoToDateMenuItem.vue';
 import UploadMenuItem from '@components/header/UploadMenuItem.vue';
 import SearchbarMenuItem from '@components/header/SearchbarMenuItem.vue';
 
@@ -33,7 +31,6 @@ import banner from '@assets/banner.svg';
 export default defineComponent({
   name: 'MobileHeader',
   components: {
-    GoToDateMenuItem,
     UploadMenuItem,
     SearchbarMenuItem,
   },
